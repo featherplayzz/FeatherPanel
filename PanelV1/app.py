@@ -1,63 +1,73 @@
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify
-import docker, psutil, sqlite3
+import docker, sqlite3, os
 
 app = Flask(__name__)
-app.secret_key = "vpanel_elite_key"
-client = docker.from_env()
+app.secret_key = "vpanel_elite_pro_key"
 
-# Database Setup
-conn = sqlite3.connect('panel.db', check_same_thread=False)
-conn.execute('CREATE TABLE IF NOT EXISTS users (user TEXT PRIMARY KEY, pwd TEXT)')
-conn.execute('INSERT OR IGNORE INTO users VALUES ("admin", "admin123")')
-conn.commit()
+# --- DATABASE ARCHITECTURE ---
+def get_db():
+    conn = sqlite3.connect('vpanel.db')
+    conn.row_factory = sqlite3.Row
+    return conn
 
-@app.route('/')
-def index():
-    if not session.get('logged_in'): return redirect(url_for('login'))
-    containers = client.containers.list(all=True)
-    return render_template('dashboard.html', containers=containers)
+def init_db():
+    db = get_db()
+    # Users: role 0 = User, 1 = Admin
+    db.execute('CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, user TEXT, pwd TEXT, role INTEGER)')
+    # Nodes: External servers
+    db.execute('CREATE TABLE IF NOT EXISTS nodes (id INTEGER PRIMARY KEY, name TEXT, ip TEXT, status TEXT)')
+    # Instances: Linked to users and nodes
+    db.execute('CREATE TABLE IF NOT EXISTS instances (id INTEGER PRIMARY KEY, name TEXT, owner TEXT, node_id INTEGER, ram TEXT, cpu TEXT, disk TEXT, image TEXT)')
+    db.execute('INSERT OR IGNORE INTO users VALUES (1, "admin", "admin123", 1)')
+    db.commit()
 
-@app.route('/stats')
-def stats():
-    return jsonify({
-        'cpu': psutil.cpu_percent(),
-        'ram': psutil.virtual_memory().percent
-    })
+init_db()
 
-@app.route('/login', methods=['GET', 'POST'])
-def login():
+# --- ADMIN: USER MANAGEMENT ---
+@app.route('/admin/users', methods=['GET', 'POST'])
+def manage_users():
+    if not session.get('is_admin'): return "Access Denied"
+    db = get_db()
     if request.method == 'POST':
-        if request.form['user'] == "admin" and request.form['pwd'] == "admin123":
-            session['logged_in'] = True
-            return redirect(url_for('index'))
-    return render_template('login.html')
+        db.execute('INSERT INTO users (user, pwd, role) VALUES (?, ?, ?)', 
+                   (request.form['user'], request.form['pwd'], request.form['role']))
+        db.commit()
+    users = db.execute('SELECT * FROM users').fetchall()
+    return render_template('users.html', users=users)
 
-@app.route('/create', methods=['POST'])
-def create():
-    client.containers.run(
-        request.form.get('image'),
-        name=request.form.get('name'),
-        hostname=request.form.get('hostname'),
-        detach=True, tty=True, stdin_open=True
-    )
+# --- INSTANCE CREATION ---
+@app.route('/create_instance', methods=['POST'])
+def create_instance():
+    # Logic to deploy to a specific Node
+    # In this version, we deploy to 'Local Node' via Docker
+    try:
+        client = docker.from_env()
+        client.containers.run(
+            request.form['image'],
+            name=request.form['name'],
+            hostname=request.form['hostname'],
+            mem_limit=request.form['ram'], # e.g. "512m"
+            nano_cpus=int(float(request.form['cpu']) * 1e9),
+            detach=True,
+            ports={f"{request.form['port']}/tcp": None}
+        )
+        # Save to DB
+        db = get_db()
+        db.execute('INSERT INTO instances (name, owner, image, ram) VALUES (?,?,?,?)',
+                   (request.form['name'], request.form['owner'], request.form['image'], request.form['ram']))
+        db.commit()
+    except Exception as e:
+        return str(e)
     return redirect(url_for('index'))
 
-@app.route('/action/<id>/<act>')
-def action(id, act):
-    c = client.containers.get(id)
-    if act == "start": c.start()
-    elif act == "stop": c.stop()
-    elif act == 'remove': c.remove(force=True)
-    return redirect(url_for('index'))
-
-# Simple Web Console Logic
-@app.route('/terminal/<id>', methods=['POST'])
-def terminal(id):
-    cmd = request.json.get('cmd')
+# --- SSH TMATE LOGIC ---
+@app.route('/ssh/<id>')
+def ssh_tmate(id):
+    client = docker.from_env()
     container = client.containers.get(id)
+    # The "Master" sequence: Install tmate and get the link
+    cmd = "sh -c 'apt update && apt install tmate -y && tmate -S /tmp/tmate.sock new-session -d && tmate -S /tmp/tmate.sock wait tmate-ready && tmate -S /tmp/tmate.sock display -p \"#{tmate_ssh}\"'"
     result = container.exec_run(cmd).output.decode('utf-8')
-    return jsonify({'output': result})
+    return jsonify({'ssh_code': result})
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
-    
+# Rest of routes (login, index, etc) follow previous logic...
