@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>FeatherCloud V-Panel</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: sans-serif; }
+        .sidebar { width: 260px; height: 100vh; background: #1e293b; position: fixed; padding: 20px; border-right: 1px solid #334155; }
+        .content { margin-left: 280px; padding: 40px; }
+        .vps-card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 20px; }
+        .status-running { color: #4ade80; }
+        .status-exited { color: #f87171; }
+        .btn-action { margin-right: 5px; }
+    </style>
+</head>
+<body>
+
+<div class="sidebar">
+    <h2 class="text-primary">FeatherCloud</h2>
+    <hr>
+    <p>🖥️ Virtual Machines</p>
+    <p>📦 Containers</p>
+    <p>💾 Backups</p>
+    <p>🛡️ Firewall</p>
+</div>
+
+<div class="content">
+    <div class="d-flex justify-content-between mb-4">
+        <h1>Cloud Nodes</h1>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createModal">+ Create VPS</button>
+    </div>
+
+    <div class="vps-card">
+        <table class="table table-dark table-hover">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Status</th>
+                    <th>Instance ID</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in containers %}
+                <tr>
+                    <td><strong>{{ c.name }}</strong></td>
+                    <td class="status-{{ c.status }}">● {{ c.status.upper() }}</td>
+                    <td><code>{{ c.short_id }}</code></td>
+                    <td>
+                        <a href="/action/{{ c.id }}/start" class="btn btn-sm btn-outline-success">Start</a>
+                        <a href="/action/{{ c.id }}/stop" class="btn btn-sm btn-outline-warning">Stop</a>
+                        <a href="/action/{{ c.id }}/delete" class="btn btn-sm btn-outline-danger" 
+                           onclick="return confirm('WARNING: Are you sure you want to delete this VPS?')">Delete</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal fade" id="createModal" tabindex="-1" style="color: black;">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form action="/create" method="POST">
+        <div class="modal-header"><h5>Create New Node</h5></div>
+        <div class="modal-body">
+          <input type="text" name="name" class="form-control" placeholder="VPS Name (e.g. Ubuntu-01)" required>
+        </div>
+        <div class="modal-footer">
+          <button type="submit" class="btn btn-primary">Deploy</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
+  
