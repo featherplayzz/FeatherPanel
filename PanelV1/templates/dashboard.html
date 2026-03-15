@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Vpanel 3.1 Elite</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: #05070a; color: #e1e1e1; font-family: 'Inter', sans-serif; }
+        .glass { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); border-radius: 15px; }
+        .sidebar { width: 280px; height: 100vh; position: fixed; padding: 30px; background: #080a0f; }
+        .main { margin-left: 300px; padding: 40px; }
+        
+        /* Gradient Buttons */
+        .btn-v { 
+            background: linear-gradient(45deg, #007bff, #00d2ff); 
+            border: none; color: white; padding: 10px 25px; border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3); transition: 0.3s;
+        }
+        .btn-v:hover { transform: translateY(-3px); box-shadow: 0 8px 25px rgba(0, 123, 255, 0.5); }
+        
+        /* Terminal Styling */
+        #console-area { background: #000; color: #0f0; font-family: monospace; padding: 15px; height: 200px; overflow-y: scroll; border-radius: 10px; }
+        .node-row { transition: 0.3s; cursor: pointer; }
+        .node-row:hover { background: rgba(255,255,255,0.05); }
+    </style>
+</head>
+<body>
+
+<div class="sidebar">
+    <h2 class="fw-bold text-info mb-5">VPANEL <span class="text-white">3.1</span></h2>
+    <div class="glass p-3 mb-4">
+        <h6>Node Health</h6>
+        <div class="progress mb-2" style="height: 6px;"><div id="cpu-bar" class="progress-bar bg-info"></div></div>
+        <small>RAM Usage</small>
+        <div class="progress" style="height: 6px;"><div id="ram-bar" class="progress-bar bg-primary"></div></div>
+    </div>
+    <hr class="opacity-25">
+    <button class="btn btn-v w-100 mb-3" data-bs-toggle="modal" data-bs-target="#createModal">Create New Node</button>
+</div>
+
+<div class="main">
+    <h1 class="mb-4">Compute Instances</h1>
+    
+    <div class="glass p-4">
+        <table class="table table-dark table-borderless">
+            <thead><tr class="text-secondary"><th>LABEL</th><th>IMAGE</th><th>STATUS</th><th>COMMANDS</th></tr></thead>
+            <tbody>
+                {% for c in containers %}
+                <tr class="node-row">
+                    <td><strong>{{ c.name }}</strong><br><small class="text-secondary">{{ c.short_id }}</small></td>
+                    <td><span class="badge bg-dark">{{ c.attrs.Config.Image }}</span></td>
+                    <td><span class="badge {{ 'bg-success' if c.status == 'running' else 'bg-danger' }}">{{ c.status }}</span></td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-info" onclick="openTerminal('{{ c.id }}')">SSH</button>
+                        <a href="/action/{{ c.id }}/stop" class="btn btn-sm btn-outline-warning">Stop</a>
+                        <a href="/action/{{ c.id }}/remove" class="btn btn-sm btn-outline-danger">Delete</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div id="terminal-window" class="glass p-4 mt-4 d-none">
+        <h5>Terminal Console: <span id="target-id"></span></h5>
+        <div id="console-area">Welcome to FeatherCloud Terminal...</div>
+        <input type="text" id="cmd-input" class="form-control bg-dark text-white border-0 mt-2" placeholder="Type command and press Enter...">
+    </div>
+</div>
+
+<div class="modal fade" id="createModal"><div class="modal-dialog"><div class="modal-content bg-dark text-white glass">
+    <form action="/create" method="POST">
+        <div class="modal-header border-0"><h5>Deploy Instance</h5></div>
+        <div class="modal-body">
+            <input type="text" name="name" class="form-control mb-3 bg-secondary text-white border-0" placeholder="Node Name">
+            <input type="text" name="hostname" class="form-control mb-3 bg-secondary text-white border-0" placeholder="Hostname">
+            <select name="image" class="form-select bg-secondary text-white border-0">
+                <option value="ubuntu">Ubuntu 22.04</option>
+                <option value="alpine">Alpine Linux</option>
+            </select>
+        </div>
+        <div class="modal-footer border-0"><button type="submit" class="btn btn-v w-100">Confirm Deployment</button></div>
+    </form>
+</div></div></div>
+
+<script>
+    // Live Stats Updater
+    setInterval(() => {
+        fetch('/stats').then(r => r.json()).then(data => {
+            document.getElementById('cpu-bar').style.width = data.cpu + '%';
+            document.getElementById('ram-bar').style.width = data.ram + '%';
+        });
+    }, 2000);
+
+    let currentId = "";
+    function openTerminal(id) {
+        document.getElementById('terminal-window').classList.remove('d-none');
+        document.getElementById('target-id').innerText = id;
+        currentId = id;
+    }
+
+    document.getElementById('cmd-input').addEventListener('keypress', function (e) {
+        if (e.key === 'Enter') {
+            let cmd = this.value;
+            this.value = '';
+            fetch('/terminal/' + currentId, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({cmd: cmd})
+            }).then(r => r.json()).then(data => {
+                document.getElementById('console-area').innerHTML += `<br>> ${cmd}<br>${data.output}`;
+                document.getElementById('console-area').scrollTop = 9999;
+            });
+        }
+    });
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+    </html>
+            
